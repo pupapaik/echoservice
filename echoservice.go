@@ -1,11 +1,15 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"net/http"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/coreos/go-systemd/daemon"
@@ -22,12 +26,24 @@ func main() {
 	DoesNotStartWith := "10."
 	IP := GetLocalIP(DoesNotStartWith)
 
+	h := &http.Server{
+		Addr:    fmt.Sprintf("%s:8080", IP),
+		Handler: router,
+	}
+
+	// channel for graceful stop os.Signal
+	var gracefulStop = make(chan os.Signal)
+	signal.Notify(gracefulStop, syscall.SIGTERM, syscall.SIGINT, syscall.SIGKILL)
+	// run goroutine for graceful stop with channel and http server object.
+	go gracefullShutdown(h, gracefulStop)
+
 	// notify readiness
 	daemon.SdNotify(false, "READY=1")
 
 	// start listening server
 	log.Printf("creating listener on %s:%d", IP, 8080)
-	go log.Fatal(http.ListenAndServe(fmt.Sprintf("%s:8080", IP), router))
+	//	go log.Fatal(http.ListenAndServe(fmt.Sprintf("%s:8080", IP), router))
+	go log.Fatal(h.ListenAndServe())
 
 	// start liveness check
 	go livenesCheck(IP)
@@ -45,6 +61,14 @@ func livenesCheck(ip string) {
 		}
 		time.Sleep(interval / 3)
 	}
+}
+
+// grafecfullShutdown shutdown http server
+func gracefullShutdown(h *http.Server, ch chan os.Signal) {
+	sig := <-ch
+	log.Printf("caught sig: %+v", sig)
+	h.Shutdown(context.Background())
+	os.Exit(0)
 }
 
 func hello(w http.ResponseWriter, r *http.Request) {
