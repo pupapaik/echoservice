@@ -1,0 +1,20 @@
+[Unit]
+Description=Echo service
+BindsTo=docker.service
+After=network.target
+After=docker.service
+
+[Service]
+# Get network environmental variables
+EnvironmentFile=/etc/network-environment
+Restart=on-failure
+TimeoutStartSec=0
+
+ExecStartPre=-/usr/bin/docker kill echoservice
+ExecStartPre=-/usr/bin/docker rm echoservice
+ExecStartPre=/usr/bin/docker pull pupapaik/echoservice
+ExecStart=/usr/bin/docker run --rm --name echoservice -p ${DEFAULT_IPV4}:8080:8080 pupapaik/echoservice
+ExecStop=/usr/bin/docker stop echoservice
+
+[Install]
+WantedBy=multi-user.target
